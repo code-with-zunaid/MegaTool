@@ -3,7 +3,7 @@ import { app } from "./app.js";
 
 dotenv.config({ path: "./.env" });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
 
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server is running on http://localhost:${PORT}`);

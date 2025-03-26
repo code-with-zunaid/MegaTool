@@ -14,8 +14,11 @@ app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(express.static("public"));
 
-app.listen(process.env.PORT||7000,()=>{
-    console.log(`app is listening on ${process.env.PORT}`);
+
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT,()=>{
+    console.log(`app is listening on ${PORT}`);
     
 })
 
