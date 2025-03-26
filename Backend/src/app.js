@@ -21,9 +21,11 @@ app.listen(process.env.PORT,()=>{
 
 // Routes import
 import imageToOtherFormatesRouter from "./routes/imageToOtherFormates.router.js";
+import pdfToolsRouter from "./routes/pdfTools.router.js"
 console.log("router is initilaized")
 // Initialize userRouter
 app.use("/api/v1/image", imageToOtherFormatesRouter);  // ✅ Added leading slash
+app.use("/api/v1/pdf",pdfToolsRouter)
 
 
 

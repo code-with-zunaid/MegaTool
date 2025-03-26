@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {upload} from "../middlewares/multer.middleware.js"
 import { 
-    convertImagesToPDF, 
+    
     convertImagesToJPEG, 
     convertImagesToPNG, 
     convertImagesToJPG, 
@@ -16,7 +16,7 @@ import {
 
 const router=Router();
 console.log("inside image to other router formate")
-router.route("/ToPDF").post(upload.array("images"), convertImagesToPDF);
+
 router.route("/ToJPEG").post(upload.array("images"), convertImagesToJPEG);
 router.route("/ToPNG").post(upload.array("images"), convertImagesToPNG);
 router.route("/ToJPG").post(upload.array("images"), convertImagesToJPG);
