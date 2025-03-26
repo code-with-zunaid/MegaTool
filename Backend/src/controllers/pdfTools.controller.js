@@ -7,7 +7,7 @@ import PDFDocument from "pdfkit";
 import sharp from "sharp";
 import { PDFDocument as PDFLib } from 'pdf-lib';
 
-// Image to PDF Converter
+// Image to PDF Converter function 
 const convertImagesToPDF = asyncHandler(async (req, res) => {
   try {
     console.log("[convertImagesToPDF] Starting conversion process");

@@ -2,7 +2,7 @@ import path from "path";
 import fs from "fs";
 import sharp from "sharp";
 
-
+//
 const FORMAT_MAP = {
   ToJPEG: { ext: "jpeg", mime: "image/jpeg" },
   ToJPG: { ext: "jpg", mime: "image/jpeg" },
