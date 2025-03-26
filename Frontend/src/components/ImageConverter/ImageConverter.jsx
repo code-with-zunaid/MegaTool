@@ -68,8 +68,14 @@ function ImageConverter() {
       const formData = new FormData();
       files.forEach(file => formData.append("images", file));
 
-      const API_URL = import.meta.env.CORS_ORIGIN || "http://localhost:4000"; // Fallback for safety
-      
+      const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_LOCAL_API;
+
+      // Add debug logging
+      console.log("Environment:", {
+        API_BASE: import.meta.env.VITE_API_BASE_URL,
+        LOCAL_API: import.meta.env.VITE_LOCAL_API,
+        MODE: import.meta.env.MODE
+      });
       const response = await axios.post(
         `${API_URL}/api/v1/image/${format}`,
         formData,
