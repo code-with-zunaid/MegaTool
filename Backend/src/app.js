@@ -15,12 +15,7 @@ app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(express.static("public"));
 
 
-const PORT = process.env.PORT || 8080;
 
-app.listen(PORT,()=>{
-    console.log(`app is listening on ${PORT}`);
-    
-})
 
 // Routes import
 import imageToOtherFormatesRouter from "./routes/imageToOtherFormates.router.js";
