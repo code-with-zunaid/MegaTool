@@ -4,9 +4,9 @@ import express from "express";
 
 const app = express();
 console.log("app.js is started");
-
+const url= process.env.CORS_ORIGIN || "http://localhost:5173"
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: url,
     credentials: true   // ✅ Fixed property name
 }));
 
@@ -14,7 +14,7 @@ app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 app.use(express.static("public"));
 
-app.listen(process.env.PORT,()=>{
+app.listen(process.env.PORT||7000,()=>{
     console.log(`app is listening on ${process.env.PORT}`);
     
 })

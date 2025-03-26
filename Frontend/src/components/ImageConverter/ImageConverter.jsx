@@ -68,8 +68,10 @@ function ImageConverter() {
       const formData = new FormData();
       files.forEach(file => formData.append("images", file));
 
+      const API_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000"; // Fallback for safety
+
       const response = await axios.post(
-        `http://localhost:4000/api/v1/image/${format}`,
+        `${API_URL}/api/v1/image/${format}`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
