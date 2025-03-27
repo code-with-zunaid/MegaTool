@@ -9,88 +9,124 @@ import { PDFDocument as PDFLib } from 'pdf-lib';
 
 // Image to PDF Converter function 
 const convertImagesToPDF = asyncHandler(async (req, res) => {
+  const debugTag = "[PDF Conversion]";
   try {
-    console.log("[convertImagesToPDF] Starting conversion process");
-    
+    console.log(`${debugTag} Initiated with ${req.files?.length || 0} files`);
+
+    // Validate request
     if (!req.files?.length) {
-      console.error("[convertImagesToPDF] No files uploaded");
-      throw new ApiError(400, "Please upload at least one image");
+      console.error(`${debugTag} No files in request`);
+      throw new ApiError(400, "Minimum 1 image required");
     }
 
-    const doc = new PDFDocument();
+    // File validation middleware
+    const validFiles = req.files.filter(file => 
+      ['image/jpeg', 'image/png'].includes(file.mimetype)
+    );
+    
+    if (validFiles.length !== req.files.length) {
+      console.error(`${debugTag} Invalid file types detected`);
+      throw new ApiError(400, "Only JPG/PNG images supported");
+    }
+
+    // Conversion tracking
+    let totalOriginalSize = 0;
+    let conversionMetrics = [];
+    
+    const doc = new PDFDocument({autoFirstPage: false});
     const buffers = [];
     
-    // Set up PDF document handlers
     doc.on('data', (chunk) => {
-      console.log("[convertImagesToPDF] Received PDF chunk of size:", chunk.length);
       buffers.push(chunk);
-    });
-    
-    doc.on('end', () => {
-      console.log("[convertImagesToPDF] PDF generation completed");
+      console.log(`${debugTag} PDF chunk processed: ${chunk.length} bytes`);
     });
 
-    // Process each image
-    for (const [index, file] of req.files.entries()) {
+    // Process images with error tracking
+    for (const [index, file] of validFiles.entries()) {
+      const fileTag = `File ${index + 1}/${validFiles.length} [${file.originalname}]`;
       try {
-        console.log(`[convertImagesToPDF] Processing image ${index + 1}/${req.files.length}: ${file.originalname}`);
+        console.log(`${debugTag} ${fileTag} Processing`);
         
-        // Validate image file
+        // File system checks
         if (!fs.existsSync(file.path)) {
-          console.error(`[convertImagesToPDF] File not found: ${file.path}`);
-          throw new ApiError(400, `Image ${file.originalname} not found`);
+          console.error(`${debugTag} ${fileTag} Missing from temp storage`);
+          throw new ApiError(400, `File ${file.originalname} upload failed`);
         }
 
-        // Get image metadata
-        const metadata = await sharp(file.path).metadata();
-        console.log(`[convertImagesToPDF] Image dimensions: ${metadata.width}x${metadata.height}`);
-
-        // Add PDF page
-        doc.addPage({ size: [metadata.width, metadata.height] });
+        // Image processing
+        const stats = fs.statSync(file.path);
+        const processor = sharp(file.path);
+        const metadata = await processor.metadata();
         
-        // Add image to PDF
-        doc.image(fs.readFileSync(file.path), 0, 0, { 
+        console.log(`${debugTag} ${fileTag} Dimensions: ${metadata.width}x${metadata.height}`);
+        
+        // PDF page creation
+        doc.addPage({ size: [metadata.width, metadata.height] });
+        doc.image(await processor.toBuffer(), 0, 0, {
           width: metadata.width,
           height: metadata.height
         });
 
-      } catch (imageError) {
-        console.error(`[convertImagesToPDF] Error processing image ${file.originalname}:`, imageError);
-        throw new ApiError(500, `Failed to process image ${file.originalname}: ${imageError.message}`);
+        // Track metrics
+        totalOriginalSize += stats.size;
+        conversionMetrics.push({
+          name: file.originalname,
+          originalSize: stats.size,
+          dimensions: `${metadata.width}x${metadata.height}`
+        });
+
+      } catch (fileError) {
+        console.error(`${debugTag} ${fileTag} Failed:`, fileError);
+        throw new ApiError(500, `Processing failed for ${file.originalname}`);
       }
     }
 
+    // Finalize PDF
     doc.end();
-    
-    // Wait for PDF generation to complete
-    const pdfBuffer = await new Promise((resolve) => {
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-    });
+    const pdfBuffer = await new Promise(resolve => doc.on('end', () => {
+      console.log(`${debugTag} PDF generation completed`);
+      resolve(Buffer.concat(buffers));
+    }));
 
-    // Cleanup files
-    console.log("[convertImagesToPDF] Cleaning up temporary files");
+    // Cleanup with verification
     req.files.forEach(file => {
-      if (fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
+      try {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+          console.log(`${debugTag} Cleaned up: ${file.path}`);
+        }
+      } catch (cleanupError) {
+        console.warn(`${debugTag} Cleanup failed for ${file.path}:`, cleanupError);
       }
     });
 
-    // Send response
-    return res.status(200).json(
-      new ApiResponse(200, {
-        pdf: pdfBuffer.toString('base64'),
-        fileName: `converted-${Date.now()}.pdf`
-      }, "PDF conversion successful")
-    );
+    // Response with analytics
+    return res.status(200).json(new ApiResponse(200, {
+      pdf: pdfBuffer.toString('base64'),
+      fileName: `converted-${Date.now()}.pdf`,
+      metrics: {
+        fileCount: validFiles.length,
+        totalOriginalSize,
+        pdfSize: pdfBuffer.length,
+        compressionRatio: (pdfBuffer.length / totalOriginalSize).toFixed(2)
+      }
+    }, "Conversion successful"));
 
   } catch (error) {
-    // Cleanup on error
+    // Comprehensive error cleanup
     req.files?.forEach(file => {
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      if (fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+          console.warn(`${debugTag} Error cleanup removed: ${file.path}`);
+        } catch (cleanupError) {
+          console.error(`${debugTag} Critical cleanup failure:`, cleanupError);
+        }
+      }
     });
     
-    console.error("[convertImagesToPDF] Conversion failed:", error);
-    throw new ApiError(error.statusCode || 500, error.message || "PDF conversion failed");
+    console.error(`${debugTag} Fatal error:`, error);
+    throw new ApiError(error.statusCode || 500, error.message || "Conversion pipeline failed");
   }
 });
 

@@ -1,105 +1,207 @@
 // src/components/PdfTools/PdfConverter.jsx
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import { saveAs } from 'file-saver';
 import { FiUploadCloud, FiDownload, FiFile, FiX } from 'react-icons/fi';
 import './PdfTools.css';
+
+// Enable debug mode from environment variables
+const DEBUG_MODE = import.meta.env.VITE_DEBUG === 'true';
 
 const PdfConverter = () => {
   const [files, setFiles] = useState([]);
   const [pdfData, setPdfData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [conversionTime, setConversionTime] = useState(0);
 
-  console.log("📌 Component Rendered!"); // Logs when the component is re-rendered
+  // Component lifecycle debugging
+  useEffect(() => {
+    DEBUG_MODE && console.group("🔄 Component Mounted/Updated");
+    DEBUG_MODE && console.log("📦 Current Files:", files);
+    DEBUG_MODE && console.log("📄 PDF Data:", pdfData);
+    DEBUG_MODE && console.log("⏳ Loading State:", loading);
+    DEBUG_MODE && console.groupEnd();
+  }, [files, pdfData, loading]);
+
+  const log = (...args) => DEBUG_MODE && console.log(...args);
 
   const handleFileUpload = useCallback((e) => {
-    console.log("📤 File input triggered!");
+    log("📂 File Input Event:", e);
     const newFiles = Array.from(e.target.files);
-    console.log("📝 Selected files:", newFiles);
+    log("➕ New Files Selected:", newFiles.map(f => ({
+      name: f.name,
+      type: f.type,
+      size: `${(f.size / 1024).toFixed(2)}KB`
+    })));
 
     if (newFiles.length === 0) {
-      console.warn("⚠️ No files selected!");
+      console.warn("⚠️ Empty File Selection");
       return;
     }
 
-    setFiles(prev => [...prev, ...newFiles]);
+    setFiles(prev => {
+      const updatedFiles = [...prev, ...newFiles];
+      log("📁 Total Files:", updatedFiles.length);
+      return updatedFiles;
+    });
     setError('');
   }, []);
 
   const removeFile = useCallback((index) => {
-    console.log(`🗑 Removing file at index: ${index}`);
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    log("🗑️ Remove File Request:", index);
+    setFiles(prev => {
+      const newFiles = prev.filter((_, i) => i !== index);
+      log("➖ Remaining Files:", newFiles.map(f => f.name));
+      return newFiles;
+    });
   }, []);
 
   const convertToPdf = async () => {
-    console.log("🚀 Convert to PDF button clicked!");
+    const debugTag = "[Frontend Conversion]";
+    const startTime = performance.now();
+    let conversionStages = {};
     
-    if (!files.length) {
-      console.warn("⚠️ No files selected for conversion.");
-      setError('Please select at least one image');
-      return;
-    }
-
-    setLoading(true);
-    console.log("⏳ Conversion started...");
-
     try {
-      const formData = new FormData();
-      files.forEach(file => {
-        console.log(`📎 Appending file: ${file.name}`);
-        formData.append('images', file);
-      });
-
-      console.log("📡 Sending request to server...");
-      const { data } = await axios.post(
-        `http://localhost:4000/api/v1/pdf/ToPDF`,
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-
-      console.log("✅ Server Response:", data);
-
-      if (!data.pdf || !data.fileName) {
-        console.error("❌ Invalid response from server");
-        throw new Error("Server did not return a valid PDF.");
+      console.log(`${debugTag} Initiated with ${files.length} files`);
+      conversionStages.start = performance.now();
+  
+      // Validation
+      if (!files.length) {
+        console.error(`${debugTag} No files selected`);
+        setError('Please select images to convert');
+        return;
       }
-
-      setPdfData({
-        base64: data.pdf,
-        fileName: data.fileName
+  
+      // Prepare upload
+      const formData = new FormData();
+      files.forEach((file, index) => {
+        formData.append('images', file);
+        console.log(`${debugTag} Added file ${index}: ${file.name} (${file.type})`);
       });
-
+  
+      conversionStages.formDataReady = performance.now();
+  
+      // API Request
+      console.log(`${debugTag} Sending to: ${import.meta.env.VITE_API_BASE_URL}`);
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_BASE_URL}/api/v1/pdf/ToPDF`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 45000,
+          onUploadProgress: progress => {
+            console.log(`${debugTag} Upload progress: ${Math.round(progress.loaded / progress.total * 100)}%`);
+          }
+        }
+      );
+  
+      conversionStages.apiResponse = performance.now();
+  
+      // Validate response structure
+      if (!response.data?.data?.pdf || !response.data.data.fileName) {
+        console.error(`${debugTag} Invalid response format:`, response.data);
+        throw new Error("Server returned unexpected format");
+      }
+  
+      // Process response
+      const { pdf, fileName, metrics } = response.data.data;
+      console.log(`${debugTag} Received PDF: ${pdf.length} chars, ${fileName}`);
+      console.log(`${debugTag} Conversion metrics:`, metrics);
+  
+      setPdfData({ base64: pdf, fileName });
       setError('');
-      console.log("🎉 Conversion successful!");
-    } catch (err) {
-      console.error("🚨 Conversion failed:", err);
-      setError(err.response?.data?.error || 'Conversion failed');
+      
+      // Analytics
+      conversionStages.complete = performance.now();
+      console.table({
+        'Form Preparation': `${conversionStages.formDataReady - conversionStages.start}ms`,
+        'API Response Time': `${conversionStages.apiResponse - conversionStages.formDataReady}ms`,
+        'Total Duration': `${conversionStages.complete - conversionStages.start}ms`,
+        'PDF Size': `${Math.round(metrics.pdfSize / 1024)}KB`,
+        'Compression Ratio': metrics.compressionRatio
+      });
+  
+    } catch (error) {
+      // Detailed error analysis
+      const errorInfo = {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        response: error.response?.data,
+        files: files.map(f => ({
+          name: f.name,
+          type: f.type,
+          size: f.size
+        }))
+      };
+  
+      console.error(`${debugTag} Failure Analysis:`, errorInfo);
+      
+      setError(error.response?.data?.message || 
+        error.message || 
+        "Conversion failed. Please check files and try again."
+      );
+  
+      // Error recovery
+      if (error.response?.status === 413) {
+        console.warn(`${debugTag} Payload too large - suggest smaller files`);
+      }
     } finally {
       setLoading(false);
-      console.log("✅ Conversion process completed!");
+      console.log(`${debugTag} Process completed in ${performance.now() - startTime}ms`);
     }
   };
 
   const downloadPdf = () => {
     if (!pdfData) {
-      console.warn("⚠️ No PDF available to download.");
+      console.warn("⚠️ Download Attempt Without PDF Data");
       return;
     }
 
-    console.log("📥 Downloading PDF...");
-    const byteArray = new Uint8Array(
-      atob(pdfData.base64)
-        .split('')
-        .map(char => char.charCodeAt(0))
-    );
+    try {
+      log("📥 PDF Download Initiated:", {
+        fileName: pdfData.fileName,
+        base64Length: pdfData.base64.length
+      });
 
-    saveAs(new Blob([byteArray], { type: 'application/pdf' }), pdfData.fileName);
-    console.log("✅ PDF Downloaded:", pdfData.fileName);
+      const byteArray = new Uint8Array(
+        atob(pdfData.base64)
+          .split('')
+          .map(char => char.charCodeAt(0))
+      );
 
-    setFiles([]);
-    setPdfData(null);
+      log("🔢 Byte Array Created:", {
+        length: byteArray.length,
+        firstBytes: Array.from(byteArray.slice(0, 4))
+      });
+
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+      log("📄 PDF Blob Created:", {
+        size: blob.size,
+        type: blob.type
+      });
+
+      saveAs(blob, pdfData.fileName);
+      log("✅ PDF Successfully Downloaded");
+
+      // Analytics
+      console.info("📊 Conversion Metrics:", {
+        fileCount: files.length,
+        conversionTime,
+        pdfSize: blob.size
+      });
+
+      setFiles([]);
+      setPdfData(null);
+      log("🔄 State Reset After Download");
+    } catch (error) {
+      console.error("🚨 Download Failed:", error);
+      setError('Failed to generate download');
+    }
   };
+
 
   return (
     <div className="converter-container">
