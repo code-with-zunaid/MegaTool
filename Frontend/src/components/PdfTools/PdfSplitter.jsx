@@ -26,33 +26,58 @@ const PdfSplitter = () => {
       setError('Please select a PDF file');
       return;
     }
-
+  
     setLoading(true);
     try {
       const formData = new FormData();
-      formData.append('pdf', file);
+      formData.append('pdf', file);  // Changed from 'pdfs' to 'pdf'
       formData.append('ranges', splitRanges);
-
-      const { data } = await axios.post('/api/pdf/split', formData);
-      
-      setSplitResults(data.splitFiles);
+  
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_BASE_URL}/api/v1/pdf/ToSplit`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          },
+          withCredentials: true
+        }
+      );
+  
+      // Access data through ApiResponse structure
+      console.log('Received split results:', data.data?.splitFiles);
+      setSplitResults(data.data?.splitFiles || []);
       setError('');
+  
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to split PDF');
+      const errorMessage = err.response?.data?.message || 
+                          err.message || 
+                          'Failed to split PDF';
+      console.error('Split error:', errorMessage);
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
-
+  
+  // Fixed base64 decoding
   const downloadSplit = (base64, fileName) => {
-    const byteArray = new Uint8Array(
-      atob(base64)
-        .split('')
-        .map(char => char.charCodeAt(0))
-    );
-    
-    saveAs(new Blob([byteArray], { type: 'application/pdf' }), fileName);
+    try {
+      const binaryString = atob(base64);
+      const byteArray = new Uint8Array(binaryString.length);
+      
+      for (let i = 0; i < binaryString.length; i++) {
+        byteArray[i] = binaryString.charCodeAt(i);
+      }
+      
+      saveAs(new Blob([byteArray], { type: 'application/pdf' }), fileName);
+    } catch (error) {
+      console.error('Download error:', error);
+      setError('Failed to download file');
+    }
   };
+
+  
 
   return (
     <div className="converter-container">

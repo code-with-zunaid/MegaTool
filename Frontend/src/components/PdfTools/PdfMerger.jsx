@@ -31,17 +31,36 @@ const PdfMerger = () => {
     setLoading(true);
     try {
       const formData = new FormData();
-      files.forEach(file => formData.append('pdfs', file));
+      files.forEach((file, index) => {
+        formData.append('pdfs', file);
+        console.log(`Added PDF ${index + 1}:`, file.name, file.size, file.type);
+      });
 
-      const { data } = await axios.post('/api/pdf/merge', formData);
+      console.log('Sending merge request with', files.length, 'PDFs');
       
+      const { data } = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/v1/pdf/ToMergePdf`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        withCredentials: true
+      });
+
+      console.log('Merge response:', data);
+      
+      if (!data?.data?.mergedPdf) {
+        throw new Error('Invalid response structure from server');
+      }
+
       setMergedPdf({
-        base64: data.mergedPdf,
-        fileName: data.fileName
+        base64: data.data.mergedPdf,
+        fileName: data.data.fileName
       });
       setError('');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to merge PDFs');
+      console.error('Merge error:', err);
+      const serverError = err.response?.data?.message;
+      const errorMessage = serverError || err.message || 'Failed to merge PDFs';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -50,16 +69,25 @@ const PdfMerger = () => {
   const downloadMerged = () => {
     if (!mergedPdf) return;
     
-    const byteArray = new Uint8Array(
-      atob(mergedPdf.base64)
-        .split('')
-        .map(char => char.charCodeAt(0))
-    );
-    
-    saveAs(new Blob([byteArray], { type: 'application/pdf' }), mergedPdf.fileName);
-    setFiles([]);
-    setMergedPdf(null);
+    try {
+      const binaryString = atob(mergedPdf.base64);
+      const byteArray = new Uint8Array(binaryString.length);
+      
+      for (let i = 0; i < binaryString.length; i++) {
+        byteArray[i] = binaryString.charCodeAt(i);
+      }
+      
+      saveAs(new Blob([byteArray], { type: 'application/pdf' }), mergedPdf.fileName);
+      console.log('Downloaded merged PDF:', mergedPdf.fileName);
+      setFiles([]);
+      setMergedPdf(null);
+    } catch (error) {
+      console.error('Download failed:', error);
+      setError('Failed to generate downloadable file');
+    }
   };
+
+  
 
   return (
     <div className="converter-container">
