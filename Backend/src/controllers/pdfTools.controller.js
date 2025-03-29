@@ -1,12 +1,35 @@
+// import { asyncHandler } from "../utils/asyncHandler.js";
+// import { ApiError } from "../utils/ApiError.js";
+// import { ApiResponse } from "../utils/ApiResponse.js";
+// import path from "path";
+// import fs from "fs";
+// import PDFDocument from "pdfkit";
+// import sharp from "sharp";
+// import { PDFDocument as PDFLib } from 'pdf-lib';
+// import crypto from 'crypto';
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import path from "path";
-import fs from "fs";
-import PDFDocument from "pdfkit";
-import sharp from "sharp";
-import { PDFDocument as PDFLib } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
+import crypto from 'crypto';
+import fs from 'fs';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
+// Get current module path
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Read pdf-lib version from package.json
+const pdfLibPath = join(__dirname, '../../node_modules/pdf-lib/package.json');
+const { version } = JSON.parse(readFileSync(pdfLibPath, 'utf-8'));
+console.log(`[PDF Protection] Initialized with pdf-lib v${version}`);
+
+// Validate encryption capability
+if (!PDFDocument.prototype.encrypt) {
+    throw new Error('[FATAL] PDFDocument.encrypt method missing - reinstall pdf-lib');
+}
 
 
 
@@ -566,143 +589,198 @@ const extractPagesFromPdf = asyncHandler(async (req, res) => {
 // Protect pdf
 
 
-/* const protectPdf = asyncHandler(async (req, res) => {
-  const debugTag = '[PDF-Protect]';
-  let filePath = null;
-
-  try {
-    console.log(`${debugTag} Request received at ${new Date().toISOString()}`);
-
-    if (!req.file) {
-      console.error(`${debugTag} ERROR: No file received`);
-      throw new ApiError(400, 'PDF file is required');
-    }
-
-    filePath = req.file.path;
-    console.log(`${debugTag} File uploaded: ${filePath}`);
-
-    if (!req.body.password || req.body.password.length < 4) {
-      console.error(`${debugTag} ERROR: Weak password`);
-      throw new ApiError(400, 'Password must be at least 4 characters');
-    }
-
-    console.log(`${debugTag} Reading PDF file`);
-    const pdfBuffer = fs.readFileSync(filePath);
-
-    console.log(`${debugTag} Loading PDF document`);
-    const pdfDoc = await PDFLib.load(pdfBuffer);
-
-    console.log(`${debugTag} Applying encryption with password: ${req.body.password}`);
-
-    const protectedBytes = await pdfDoc.save({
-      userPassword: req.body.password,
-      ownerPassword: req.body.password + "_owner",
-      permissions: {
-        printing: false,
-        copying: false,
-        modifying: false,
-      }
-    });
-
-    console.log(`${debugTag} PDF encrypted successfully, size: ${protectedBytes.length} bytes`);
-
-    // Save the protected PDF temporarily to verify encryption
-    const encryptedFilePath = filePath.replace(".pdf", "_protected.pdf");
-    fs.writeFileSync(encryptedFilePath, protectedBytes);
-    console.log(`${debugTag} Encrypted PDF saved at: ${encryptedFilePath}`);
-
-    console.log(`${debugTag} Removing temporary file: ${filePath}`);
-    fs.unlinkSync(filePath);
-
-    res.status(200).json({
-      data: Buffer.from(protectedBytes).toString('base64'),
-      fileName: `protected-${Date.now()}.pdf`,
-    });
-
-  } catch (error) {
-    console.error(`${debugTag} ERROR:`, error);
-    if (filePath && fs.existsSync(filePath)) {
-      console.log(`${debugTag} Cleaning up file after error`);
-      try {
-        fs.unlinkSync(filePath);
-      } catch (cleanupError) {
-        console.error(`${debugTag} Cleanup failed:`, cleanupError);
-      }
-    }
-
-    res.status(error.statusCode || 500).json(new ApiError(error.statusCode || 500, error.message || 'PDF protection failed'));
-  }
-}); */
 
 
-
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execPromise = promisify(exec);
 
 const protectPdf = asyncHandler(async (req, res) => {
-  const debugTag = '[PDF-Protect]';
-  let filePath = null;
-  let protectedFilePath = null;
 
-  try {
-    console.log(`${debugTag} Request received at ${new Date().toISOString()}`);
 
-    if (!req.file) {
-      console.error(`${debugTag} ERROR: No file received`);
-      throw new ApiError(400, 'PDF file is required');
-    }
+    const debugTag = '[PDF Protection]';
+    let tempFilePath = null;
+    let originalSize = 0;
+    let protectedSize = 0;
 
-    filePath = req.file.path;
-    console.log(`${debugTag} File uploaded: ${filePath}`);
-
-    if (!req.body.password || req.body.password.length < 4) {
-      console.error(`${debugTag} ERROR: Weak password`);
-      throw new ApiError(400, 'Password must be at least 4 characters');
-    }
-
-    // Check original file size
-    const originalFileSize = fs.statSync(filePath).size;
-    console.log(`${debugTag} Original file size: ${originalFileSize} bytes`);
-
-    // Define protected file path
-    protectedFilePath = filePath.replace('.pdf', '_protected.pdf');
-
-    console.log(`${debugTag} Applying encryption with password: ${req.body.password}`);
-
-    // 🔹 Use qpdf to encrypt the PDF
-    const qpdfCommand = `qpdf --encrypt "${req.body.password}" "${req.body.password}" 256 -- "${filePath}" "${protectedFilePath}"`;
-    await execPromise(qpdfCommand);
-
-    // Check encrypted file size
-    const encryptedFileSize = fs.statSync(protectedFilePath).size;
-    console.log(`${debugTag} Encrypted file size: ${encryptedFileSize} bytes`);
-
-    console.log(`${debugTag} Encrypted PDF saved at: ${protectedFilePath}`);
-
-    console.log(`${debugTag} Removing temporary file: ${filePath}`);
-    fs.unlinkSync(filePath);
-
-    res.status(200).json({
-      data: fs.readFileSync(protectedFilePath).toString('base64'),
-      fileName: path.basename(protectedFilePath),
-    });
-
-  } catch (error) {
-    console.error(`${debugTag} ERROR:`, error);
-    if (filePath && fs.existsSync(filePath)) {
-      console.log(`${debugTag} Cleaning up file after error`);
-      try {
-        fs.unlinkSync(filePath);
-      } catch (cleanupError) {
-        console.error(`${debugTag} Cleanup failed:`, cleanupError);
+    try {
+        console.log(`${debugTag} Starting protection process`);
+          // 1. Version Validation
+        if (!PDFDocument.prototype.encrypt) {
+          console.error(`${debugTag} Fatal: pdf-lib version too old`);
+          throw new ApiError(500, 'Server requires pdf-lib v1.17.0+');
       }
-    }
+        // 1. Request Validation
+        console.debug(`${debugTag} Phase: Request Validation`);
+        if (!req.file?.path) {
+            console.error(`${debugTag} No file uploaded`);
+            throw new ApiError(400, "PDF file is required");
+        }
 
-    res.status(error.statusCode || 500).json(new ApiError(error.statusCode || 500, error.message || 'PDF protection failed'));
-  }
+        if (!req.body.password || req.body.password.length < 8) {
+            console.error(`${debugTag} Invalid password length: ${req.body.password?.length || 0}`);
+            throw new ApiError(400, "Password must be at least 8 characters");
+        }
+
+        // 2. File Handling
+        console.debug(`${debugTag} Phase: File Handling`);
+        tempFilePath = req.file.path;
+        const password = req.body.password;
+        
+        console.debug(`${debugTag} Temporary file: ${tempFilePath}`);
+        const stats = await fs.promises.stat(tempFilePath);
+        originalSize = stats.size;
+        console.debug(`${debugTag} Original size: ${formatBytes(originalSize)}`);
+
+        // 3. Read and Validate PDF
+        console.debug(`${debugTag} Phase: PDF Validation`);
+        const pdfBuffer = await fs.promises.readFile(tempFilePath);
+        
+        if (!isValidPdf(pdfBuffer)) {
+            console.error(`${debugTag} Invalid PDF header`);
+            throw new ApiError(400, "Invalid PDF file format");
+        }
+
+        // 4. PDF Processing
+        console.time(`${debugTag} PDF Processing Time`);
+        console.debug(`${debugTag} Phase: PDF Processing`);
+        
+        console.log(`${debugTag} Loading PDF document`);
+        const pdfDoc = await PDFLib.load(pdfBuffer);
+        console.debug(`${debugTag} Page count: ${pdfDoc.getPages().length}`);
+
+        // 5. Encryption Setup
+        console.debug(`${debugTag} Phase: Encryption`);
+        const ownerPassword = crypto.randomBytes(16).toString('hex');
+        
+        console.debug(`${debugTag} Generated owner password: ${ownerPassword.substring(0, 6)}...`);
+        console.debug(`${debugTag} Configuring encryption...`);
+
+        // Modern pdf-lib encryption syntax
+        await pdfDoc.encrypt({
+            userPassword: password,
+            ownerPassword: ownerPassword,
+            permissions: {
+                allowPrinting: true,
+                allowModifications: false,
+                allowCopying: false,
+                allowAnnotations: false,
+                allowFillingForms: false,
+                allowContentAccessibility: false,
+                allowDocumentAssembly: false
+            },
+            encryption: {
+                algorithm: 'AES_256',
+                keyLength: 256
+            }
+        });
+
+        // 6. Save Protected PDF
+        console.debug(`${debugTag} Saving protected PDF...`);
+        const protectedPdfBytes = await pdfDoc.save();
+        protectedSize = protectedPdfBytes.length;
+        console.debug(`${debugTag} Protected size: ${formatBytes(protectedSize)}`);
+        console.timeEnd(`${debugTag} PDF Processing Time`);
+
+        // 7. Generate Report
+        console.debug(`${debugTag} Generating security report...`);
+        const reportBuffer = await generateSecurityReport({
+            originalSize,
+            protectedSize,
+            algorithm: 'AES-256'
+        });
+
+        // 8. Cleanup
+        console.debug(`${debugTag} Cleaning temporary files...`);
+        await fs.promises.unlink(tempFilePath);
+
+        // 9. Response
+        console.debug(`${debugTag} Sending response...`);
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    protectedPdf: protectedPdfBytes.toString('base64'),
+                    securityReport: reportBuffer.toString('base64'),
+                    metadata: {
+                        originalSize: formatBytes(originalSize),
+                        protectedSize: formatBytes(protectedSize),
+                        sizeChange: calculateSizeChange(originalSize, protectedSize),
+                        encryption: 'AES-256'
+                    }
+                },
+                "PDF protected successfully"
+            )
+        );
+
+    } catch (error) {
+        console.error(`${debugTag} ERROR:`, {
+            message: error.message,
+            code: error.code,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+
+        // Cleanup temp file
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+            console.warn(`${debugTag} Emergency cleanup...`);
+            await fs.promises.unlink(tempFilePath).catch((err) => {
+                console.error(`${debugTag} Cleanup failed:`, err);
+            });
+        }
+
+        const statusCode = error.statusCode || 500;
+        const message = error instanceof ApiError ? error.message : 'PDF protection failed';
+        throw new ApiError(statusCode, message);
+    }
 });
+
+// Helper Functions
+const isValidPdf = (buffer) => {
+    try {
+        return buffer?.length > 4 &&
+            buffer[0] === 0x25 && // %
+            buffer[1] === 0x50 && // P
+            buffer[2] === 0x44 && // D
+            buffer[3] === 0x46;   // F
+    } catch (error) {
+        console.error('[Validation] PDF validation error:', error);
+        return false;
+    }
+};
+
+const formatBytes = (bytes, decimals = 2) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+};
+
+const calculateSizeChange = (original, current) => {
+    if (original <= 0 || current <= 0) return 'N/A';
+    const change = ((current - original) / original * 100).toFixed(2);
+    return `${change}%`;
+};
+
+const generateSecurityReport = async (metadata) => {
+    try {
+        const doc = new PDFDocument();
+        doc.fontSize(12).text('Security Report', { align: 'center' });
+        doc.moveDown().text(`Generated: ${new Date().toISOString()}`);
+        doc.text(`Original Size: ${metadata.originalSize}`);
+        doc.text(`Protected Size: ${metadata.protectedSize}`);
+        doc.text(`Size Change: ${metadata.sizeChange}`);
+        doc.text(`Encryption: ${metadata.algorithm}`);
+        
+        return new Promise((resolve) => {
+            const chunks = [];
+            doc.on('data', (chunk) => chunks.push(chunk));
+            doc.on('end', () => resolve(Buffer.concat(chunks)));
+            doc.end();
+        });
+    } catch (error) {
+        console.error('[Report] Generation failed:', error);
+        return Buffer.from('Error generating report');
+    }
+};
+
 
 
 

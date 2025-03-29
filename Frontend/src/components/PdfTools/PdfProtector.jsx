@@ -244,10 +244,166 @@
 
 // export default PdfProtector;
 
-import { useState, useCallback } from 'react';
+// import { useState, useCallback } from 'react';
+// import axios from 'axios';
+// import { saveAs } from 'file-saver';
+// import { FiUploadCloud, FiDownload, FiLock } from 'react-icons/fi';
+// import './PdfTools.css';
+
+// const PdfProtector = () => {
+//   const [file, setFile] = useState(null);
+//   const [password, setPassword] = useState('');
+//   const [confirmPassword, setConfirmPassword] = useState('');
+//   const [processedPdf, setProcessedPdf] = useState(null);
+//   const [loading, setLoading] = useState(false);
+//   const [error, setError] = useState('');
+
+//   const handleFileUpload = useCallback((e) => {
+//     const selectedFile = e.target.files[0];
+//     console.debug('[PDF-Protect] File selected:', selectedFile?.name, selectedFile?.size);
+//     if (selectedFile?.type === 'application/pdf') {
+//       setFile(selectedFile);
+//       setError('');
+//     } else {
+//       console.error('[PDF-Protect] Invalid file type:', selectedFile?.type);
+//       setError('Please upload a valid PDF file');
+//     }
+//   }, []);
+
+//   const protectPdf = async () => {
+//     setLoading(true);
+//     setError('');
+  
+//     try {
+//       const formData = new FormData();
+//       formData.append('pdf', file);
+//       formData.append('password', password);
+  
+//       console.debug('[PDF-Protect] Sending protection request');
+  
+//       const response = await axios.post(
+//         `${import.meta.env.VITE_API_BASE_URL}/api/v1/pdf/ToProtectPdf`,
+//         formData,
+//         {
+//           headers: { 'Content-Type': 'multipart/form-data' },
+//           timeout: 30000
+//         }
+//       );
+  
+//       console.debug('[PDF-Protect] Server response:', response);
+  
+//       if (!response.data || !response.data.data) {
+//         throw new Error('Invalid response from server');
+//       }
+  
+//       setProcessedPdf({
+//         base64: response.data.data,
+//         fileName: response.data.fileName || `protected-${Date.now()}.pdf`
+//       });
+  
+//     } catch (err) {
+//       console.error('[PDF-Protect] Protection failed:', err);
+//       setError(err.response?.data?.message || 'Failed to protect PDF');
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+  
+//   const downloadProtected = () => {
+//     if (!processedPdf) return;
+  
+//     try {
+//       console.debug('[PDF-Protect] Download initiated');
+  
+//       const byteCharacters = atob(processedPdf.base64);
+//       const byteArray = new Uint8Array(byteCharacters.length);
+//       for (let i = 0; i < byteCharacters.length; i++) {
+//         byteArray[i] = byteCharacters.charCodeAt(i);
+//       }
+  
+//       console.debug('[PDF-Protect] Checking encryption');
+//       const headerBytes = byteArray.subarray(0, 4);
+      
+//       // This prevents false positives in PDF header checks
+//       if (!(headerBytes[0] === 0x25 && headerBytes[1] === 0x50)) {
+//         throw new Error('PDF_NOT_ENCRYPTED: File header shows no encryption');
+//       }
+  
+//       const blob = new Blob([byteArray], { type: 'application/pdf' });
+//       saveAs(blob, processedPdf.fileName);
+//     } catch (err) {
+//       console.error('[PDF-Protect] DOWNLOAD FAILURE:', err);
+//       setError('Download failed: ' + err.message);
+//     }
+//   };
+  
+
+//   return (
+//     <div className="converter-container">
+//       <div className="file-upload-card">
+//         <label className="upload-area">
+//           <FiUploadCloud className="upload-icon" />
+//           <span>Select PDF to Protect</span>
+//           <input 
+//             type="file" 
+//             onChange={handleFileUpload}
+//             accept="application/pdf"
+//             className="hidden-input"
+//           />
+//         </label>
+
+//         {file && (
+//           <div className="protection-controls">
+//             <div className="form-group">
+//               <label>Set Password</label>
+//               <input
+//                 type="password"
+//                 value={password}
+//                 onChange={(e) => setPassword(e.target.value)}
+//                 placeholder="Enter password"
+//               />
+//             </div>
+//             <div className="form-group">
+//               <label>Confirm Password</label>
+//               <input
+//                 type="password"
+//                 value={confirmPassword}
+//                 onChange={(e) => setConfirmPassword(e.target.value)}
+//                 placeholder="Confirm password"
+//               />
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       {error && <div className="error-banner">{error}</div>}
+
+//       <div className="action-buttons">
+//         <button 
+//           className={`convert-btn ${loading ? 'loading' : ''}`}
+//           onClick={protectPdf}
+//           disabled={loading || !file}
+//         >
+//           <FiLock /> {loading ? 'Protecting...' : 'Protect PDF'}
+//         </button>
+
+//         {processedPdf && (
+//           <button className="download-btn" onClick={downloadProtected}>
+//             <FiDownload /> Download Protected PDF
+//           </button>
+//         )}
+//       </div>
+//     </div>
+//   );
+// };
+
+// export default PdfProtector;
+
+
+import { useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { saveAs } from 'file-saver';
-import { FiUploadCloud, FiDownload, FiLock } from 'react-icons/fi';
+import { FiUploadCloud, FiDownload, FiLock, FiAlertTriangle } from 'react-icons/fi';
 import './PdfTools.css';
 
 const PdfProtector = () => {
@@ -257,86 +413,189 @@ const PdfProtector = () => {
   const [processedPdf, setProcessedPdf] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef(null);
 
   const handleFileUpload = useCallback((e) => {
     const selectedFile = e.target.files[0];
-    console.debug('[PDF-Protect] File selected:', selectedFile?.name, selectedFile?.size);
-    if (selectedFile?.type === 'application/pdf') {
+    setError('');
+    console.debug('[PDF-Protect] File input changed', { 
+      file: selectedFile ? {
+        name: selectedFile.name,
+        type: selectedFile.type,
+        size: selectedFile.size
+      } : null
+    });
+
+    try {
+      if (!selectedFile) {
+        console.error('[PDF-Protect] No file selected');
+        throw new Error('NO_FILE_SELECTED');
+      }
+
+      if (selectedFile.type !== 'application/pdf') {
+        console.error('[PDF-Protect] Invalid file type', selectedFile.type);
+        throw new Error('INVALID_FILE_TYPE');
+      }
+
+      if (selectedFile.size > 50 * 1024 * 1024) { // 50MB limit
+        console.error('[PDF-Protect] File too large', selectedFile.size);
+        throw new Error('FILE_TOO_LARGE');
+      }
+
       setFile(selectedFile);
-      setError('');
-    } else {
-      console.error('[PDF-Protect] Invalid file type:', selectedFile?.type);
-      setError('Please upload a valid PDF file');
+      console.info('[PDF-Protect] Valid PDF selected', {
+        name: selectedFile.name,
+        size: (selectedFile.size / 1024 / 1024).toFixed(2) + 'MB'
+      });
+    } catch (err) {
+      setFile(null);
+      fileInputRef.current.value = ''; // Reset input
+      const errors = {
+        'NO_FILE_SELECTED': 'Please select a PDF file',
+        'INVALID_FILE_TYPE': 'Only PDF files are allowed',
+        'FILE_TOO_LARGE': 'File size exceeds 50MB limit'
+      };
+      setError(errors[err.message] || 'Invalid file upload');
     }
   }, []);
 
   const protectPdf = async () => {
     setLoading(true);
     setError('');
-  
+    console.info('[PDF-Protect] Protection process started', {
+      file: file?.name,
+      passwordLength: password.length
+    });
+
     try {
+      // Client-side validation
+      if (!file) throw new Error('NO_FILE_SELECTED');
+      if (password.length < 8) throw new Error('WEAK_PASSWORD');
+      if (password !== confirmPassword) throw new Error('PASSWORD_MISMATCH');
+
       const formData = new FormData();
       formData.append('pdf', file);
       formData.append('password', password);
-  
-      console.debug('[PDF-Protect] Sending protection request');
-  
+
+      console.debug('[PDF-Protect] Sending protection request', {
+        headers: Object.fromEntries(formData.entries())
+      });
+
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/api/v1/pdf/ToProtectPdf`,
         formData,
         {
           headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: 30000
+          timeout: 60000,
+          validateStatus: (status) => status < 500
         }
       );
-  
-      console.debug('[PDF-Protect] Server response:', response);
-  
-      if (!response.data || !response.data.data) {
-        throw new Error('Invalid response from server');
-      }
-  
-      setProcessedPdf({
-        base64: response.data.data,
-        fileName: response.data.fileName || `protected-${Date.now()}.pdf`
+
+      console.debug('[PDF-Protect] Server response', {
+        status: response.status,
+        data: response.data
       });
-  
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'SERVER_ERROR');
+      }
+
+      if (!response.data.data?.protectedPdf) {
+        console.error('[PDF-Protect] Invalid response structure');
+        throw new Error('INVALID_RESPONSE');
+      }
+
+      setProcessedPdf({
+        base64: response.data.data.protectedPdf,
+        fileName: response.data.data.fileName,
+        metadata: response.data.data.metadata
+      });
+
     } catch (err) {
-      console.error('[PDF-Protect] Protection failed:', err);
-      setError(err.response?.data?.message || 'Failed to protect PDF');
+      console.error('[PDF-Protect] Protection failed', {
+        error: err.message,
+        response: err.response?.data,
+        stack: err.stack
+      });
+
+      const errorMap = {
+        'NO_FILE_SELECTED': 'Please select a PDF file',
+        'WEAK_PASSWORD': 'Password must be at least 8 characters',
+        'PASSWORD_MISMATCH': 'Passwords do not match',
+        'NETWORK_ERROR': 'Network connection failed',
+        'TIMEOUT_ERROR': 'Request timed out',
+        'SERVER_ERROR': 'Server processing failed',
+        'INVALID_RESPONSE': 'Invalid server response'
+      };
+
+      setError(errorMap[err.message] || 
+        err.response?.data?.message || 
+        'PDF protection failed');
     } finally {
       setLoading(false);
     }
   };
-  
+
   const downloadProtected = () => {
     if (!processedPdf) return;
-  
+    console.info('[PDF-Protect] Download initiated', {
+      base64Length: processedPdf.base64.length,
+      fileName: processedPdf.fileName
+    });
+
     try {
-      console.debug('[PDF-Protect] Download initiated');
-  
+      // Validate base64
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(processedPdf.base64)) {
+        console.error('[PDF-Protect] Invalid base64 encoding');
+        throw new Error('INVALID_BASE64');
+      }
+
       const byteCharacters = atob(processedPdf.base64);
       const byteArray = new Uint8Array(byteCharacters.length);
+      
       for (let i = 0; i < byteCharacters.length; i++) {
         byteArray[i] = byteCharacters.charCodeAt(i);
       }
-  
-      console.debug('[PDF-Protect] Checking encryption');
-      const headerBytes = byteArray.subarray(0, 4);
+
+      // Validate PDF encryption
+      const header = new TextDecoder().decode(byteArray.slice(0, 8));
+      console.debug('[PDF-Protect] PDF Header:', header);
       
-      // This prevents false positives in PDF header checks
-      if (!(headerBytes[0] === 0x25 && headerBytes[1] === 0x50)) {
-        throw new Error('PDF_NOT_ENCRYPTED: File header shows no encryption');
+      if (header.includes('%PDF-')) {
+        console.error('[PDF-Protect] Unencrypted PDF detected');
+        throw new Error('UNENCRYPTED_PDF');
       }
-  
+
       const blob = new Blob([byteArray], { type: 'application/pdf' });
+      
+      // Verify blob integrity
+      if (blob.size !== byteArray.length) {
+        console.error('[PDF-Protect] Blob size mismatch', {
+          blobSize: blob.size,
+          arrayLength: byteArray.length
+        });
+        throw new Error('BLOB_INTEGRITY_ERROR');
+      }
+
       saveAs(blob, processedPdf.fileName);
+      console.info('[PDF-Protect] Download successful');
+
     } catch (err) {
-      console.error('[PDF-Protect] DOWNLOAD FAILURE:', err);
-      setError('Download failed: ' + err.message);
+      console.error('[PDF-Protect] Download failed', {
+        error: err.message,
+        stack: err.stack,
+        fileName: processedPdf.fileName
+      });
+
+      const errorMessages = {
+        'INVALID_BASE64': 'Corrupted file data',
+        'UNENCRYPTED_PDF': 'File not properly encrypted',
+        'BLOB_INTEGRITY_ERROR': 'File integrity check failed'
+      };
+
+      setError(errorMessages[err.message] || 'Download failed');
     }
   };
-  
 
   return (
     <div className="converter-container">
@@ -345,10 +604,12 @@ const PdfProtector = () => {
           <FiUploadCloud className="upload-icon" />
           <span>Select PDF to Protect</span>
           <input 
+            ref={fileInputRef}
             type="file" 
             onChange={handleFileUpload}
             accept="application/pdf"
             className="hidden-input"
+            data-testid="file-input"
           />
         </label>
 
@@ -360,7 +621,8 @@ const PdfProtector = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder="Minimum 8 characters"
+                minLength="8"
               />
             </div>
             <div className="form-group">
@@ -369,26 +631,36 @@ const PdfProtector = () => {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm password"
+                placeholder="Re-enter password"
               />
             </div>
           </div>
         )}
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
+      {error && (
+        <div className="error-banner">
+          <FiAlertTriangle className="error-icon" />
+          {error}
+        </div>
+      )}
 
       <div className="action-buttons">
         <button 
           className={`convert-btn ${loading ? 'loading' : ''}`}
           onClick={protectPdf}
           disabled={loading || !file}
+          data-testid="protect-button"
         >
           <FiLock /> {loading ? 'Protecting...' : 'Protect PDF'}
         </button>
 
         {processedPdf && (
-          <button className="download-btn" onClick={downloadProtected}>
+          <button 
+            className="download-btn"
+            onClick={downloadProtected}
+            data-testid="download-button"
+          >
             <FiDownload /> Download Protected PDF
           </button>
         )}
@@ -398,5 +670,3 @@ const PdfProtector = () => {
 };
 
 export default PdfProtector;
-
-
